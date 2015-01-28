@@ -157,9 +157,8 @@ func Compress(input []byte) []byte {
 				ref_index++
 				ip_index++
 			}
-			ip_index++
-			if ip_index > ip_bound_index {
-				ip_index--
+			if ip_index < ip_bound_index {
+				ip_index++
 			}
 		}
 
