@@ -1,12 +1,17 @@
 // Package fastlz implements the FastLZ compression method
 /*
 
-    Currently only level 1 compression (fastest) is supported.
+Currently only level 1 compression (fastest) is supported.
 
 This code translated from
 
     https://github.com/ariya/FastLZ/blob/master/fastlz.c
     https://raw.githubusercontent.com/kbatten/fastlz.js/master/compressor.js
+
+and is licensed under the MIT License like the originals.
+
+FastLZ home page: http://fastlz.org/
+
 */
 package fastlz
 
