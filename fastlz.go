@@ -15,7 +15,8 @@ FastLZ home page: http://fastlz.org/
 */
 package fastlz
 
-// TODO(dgryski): add Decompress()
+import "errors"
+
 // TODO(dgryski): make compression API match snappy and friends
 // TODO(dgryski): add level 2?
 // TODO(dgryski): clean up code
@@ -31,6 +32,8 @@ const (
 	hashSize = (1 << hashLog)
 	hashMask = (hashSize - 1)
 )
+
+var ErrCorrupt = errors.New("corrupt input")
 
 func readu16(p []byte, i uint32) uint16 {
 	return uint16(p[i]) + (uint16(p[i+1]) << 8)
@@ -237,4 +240,117 @@ func Compress(input []byte) []byte {
 	}
 
 	return op[:op_index]
+}
+
+func Decompress(input []byte, maxout int) ([]byte, error) {
+
+	length := len(input)
+	ip := input
+	var ip_index uint32
+
+	ip_limit_index := uint32(length)
+	op := make([]byte, maxout)
+	var op_index uint32
+	op_limit_index := uint32(maxout)
+
+	var ctrl = ip[ip_index] & 31
+	ip_index++
+	var loop = true
+
+	for loop {
+		var ref_index = op_index
+		var ln uint32 = uint32(ctrl >> 5)
+		var ofs uint32 = uint32(ctrl&31) << 8
+
+		if ctrl >= 32 {
+			ln--
+			ref_index -= ofs
+			if ln == 7-1 {
+				ln += uint32(ip[ip_index])
+				ip_index++
+			}
+			ref_index -= uint32(ip[ip_index])
+			ip_index++
+
+			if op_index+ln+3 > op_limit_index {
+				return nil, ErrCorrupt
+			}
+
+			if ref_index > op_limit_index {
+				// really want to check if  ref_index is <0, but unsigned makes it tricky
+				return nil, ErrCorrupt
+			}
+
+			if ip_index < ip_limit_index {
+				ctrl = byte(ip[ip_index])
+				ip_index++
+			} else {
+				loop = false
+			}
+
+			if ref_index == op_index {
+				/* optimize copy for a run */
+				var b uint8 = op[ref_index-1]
+				op[op_index] = b
+				op_index++
+				op[op_index] = b
+				op_index++
+				op[op_index] = b
+				op_index++
+				for ; ln != 0; ln-- {
+					op[op_index] = b
+					op_index++
+				}
+			} else {
+				/* copy from reference */
+				ref_index--
+
+				op[op_index] = op[ref_index]
+				op_index++
+				ref_index++
+
+				op[op_index] = op[ref_index]
+				op_index++
+				ref_index++
+
+				op[op_index] = op[ref_index]
+				op_index++
+				ref_index++
+
+				for ; ln != 0; ln-- {
+					op[op_index] = op[ref_index]
+					op_index++
+					ref_index++
+				}
+			}
+		} else {
+			ctrl++
+
+			if op_index+uint32(ctrl) > op_limit_index {
+				return nil, ErrCorrupt
+			}
+
+			if ip_index+uint32(ctrl) > ip_limit_index {
+				return nil, ErrCorrupt
+			}
+
+			op[op_index] = ip[ip_index]
+			op_index++
+			ip_index++
+
+			for ctrl--; ctrl > 0; ctrl-- {
+				op[op_index] = ip[ip_index]
+				op_index++
+				ip_index++
+			}
+
+			loop = ip_index < ip_limit_index
+			if loop {
+				ctrl = ip[ip_index]
+				ip_index++
+			}
+		}
+	}
+
+	return op[:op_index], nil
 }
