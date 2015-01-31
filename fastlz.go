@@ -1,7 +1,7 @@
-// Package fastlz implements the FastLZ compression method
+// Package fastlz implements FastLZ compression
 /*
 
-Currently only level 1 compression (fastest) is supported.
+Currently only level 1 compression/decompression (fastest) is supported.
 
 This code translated from
 
