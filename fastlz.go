@@ -25,26 +25,13 @@ const (
 	maxCopy     = 32
 	maxLen      = 264 /* 256 + 8 */
 	maxDistance = 8192
-)
 
-const (
 	hashLog  = 13
 	hashSize = (1 << hashLog)
 	hashMask = (hashSize - 1)
 )
 
 var ErrCorrupt = errors.New("corrupt input")
-
-func readu16(p []byte, i uint32) uint16 {
-	return uint16(p[i]) + (uint16(p[i+1]) << 8)
-}
-
-func hash(p []byte, i uint32) uint32 {
-	v := readu16(p, i)
-	v ^= readu16(p, i+1) ^ (v >> (16 - hashLog))
-	v &= hashMask
-	return uint32(v)
-}
 
 func Compress(input []byte) []byte {
 
@@ -353,4 +340,15 @@ func Decompress(input []byte, maxout int) ([]byte, error) {
 	}
 
 	return op[:op_index], nil
+}
+
+func readu16(p []byte, i uint32) uint16 {
+	return uint16(p[i]) + (uint16(p[i+1]) << 8)
+}
+
+func hash(p []byte, i uint32) uint32 {
+	v := readu16(p, i)
+	v ^= readu16(p, i+1) ^ (v >> (16 - hashLog))
+	v &= hashMask
+	return uint32(v)
 }
