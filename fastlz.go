@@ -31,23 +31,25 @@ const (
 	hashMask = (hashSize - 1)
 )
 
+// ErrCorrupt indicates a corrupt input stream
 var ErrCorrupt = errors.New("corrupt input")
 
+// Compress compresses the input and returns the compressed byte stream
 func Compress(input []byte) []byte {
 
 	ip := input
 
-	var ip_index uint32
+	var ipIdx uint32
 	var length = uint32(len(ip))
 
-	var ip_bound_index uint32 = length - 2
-	var ip_limit_index uint32 = length - 12
+	var ipBoundIdx = length - 2
+	var ipLimitIdx = length - 12
 	var op = make([]byte, int(float64(len(ip)+50)*1.4))
-	var op_index uint32 = 0
+	var opIdx uint32
 
 	var htab []uint32
-	var hslot_index uint32 = 0
-	var hval uint32 = 0
+	var hslotIdx uint32
+	var hval uint32
 
 	var cpy uint32
 
@@ -58,13 +60,13 @@ func Compress(input []byte) []byte {
 		}
 
 		/* create literal copy only */
-		op[op_index] = byte(length) - 1
-		op_index++
-		ip_bound_index++
-		for ip_index <= ip_bound_index {
-			op[op_index] = ip[ip_index]
-			op_index++
-			ip_index++
+		op[opIdx] = byte(length) - 1
+		opIdx++
+		ipBoundIdx++
+		for ipIdx <= ipBoundIdx {
+			op[opIdx] = ip[ipIdx]
+			opIdx++
+			ipIdx++
 		}
 		return op[:length+1]
 	}
@@ -74,272 +76,273 @@ func Compress(input []byte) []byte {
 
 	/* we start with literal copy */
 	cpy = 2
-	op[op_index] = maxCopy - 1
-	op_index++
-	op[op_index] = ip[ip_index]
-	op_index++
-	ip_index++
-	op[op_index] = ip[ip_index]
-	op_index++
-	ip_index++
+	op[opIdx] = maxCopy - 1
+	opIdx++
+	op[opIdx] = ip[ipIdx]
+	opIdx++
+	ipIdx++
+	op[opIdx] = ip[ipIdx]
+	opIdx++
+	ipIdx++
 
 	/* main loop */
-	for ip_index < ip_limit_index {
+	for ipIdx < ipLimitIdx {
 
-		var ref_index uint32 = 0
-		var distance uint32 = 0
+		var refIdx uint32
+		var distance uint32
 
 		/* minimum match length */
 		var ln uint32 = 3
 
 		/* comparison starting-point */
-		var anchor_index = uint32(ip_index)
+		var anchorIdx = uint32(ipIdx)
 
 		/* find potential match */
-		hval = hash(ip, ip_index)
-		hslot_index = hval
-		ref_index = htab[hval]
+		hval = hash(ip, ipIdx)
+		hslotIdx = hval
+		refIdx = htab[hval]
 
 		/* calculate distance to the match */
-		distance = anchor_index - ref_index
+		distance = anchorIdx - refIdx
 
 		/* update hash table */
-		htab[hslot_index] = anchor_index
+		htab[hslotIdx] = anchorIdx
 
 		/* is this a match? check the first 3 bytes */
 		if distance == 0 ||
 			(distance >= maxDistance) ||
-			ip[ref_index] != ip[ip_index] || ip[ref_index+1] != ip[ip_index+1] || ip[ref_index+2] != ip[ip_index+2] {
+			ip[refIdx] != ip[ipIdx] || ip[refIdx+1] != ip[ipIdx+1] || ip[refIdx+2] != ip[ipIdx+2] {
 			/* goto literal: */
-			op[op_index] = ip[anchor_index]
-			op_index++
-			anchor_index++
-			ip_index = anchor_index
+			op[opIdx] = ip[anchorIdx]
+			opIdx++
+			anchorIdx++
+			ipIdx = anchorIdx
 			cpy++
 			if cpy == maxCopy {
 				cpy = 0
-				op[op_index] = maxCopy - 1
-				op_index++
+				op[opIdx] = maxCopy - 1
+				opIdx++
 			}
 			continue
 		}
 
 		/* last matched byte */
-		ref_index += ln
-		ip_index = anchor_index + ln
+		refIdx += ln
+		ipIdx = anchorIdx + ln
 
 		/* distance is biased */
 		distance--
 
 		if distance == 0 {
 			/* zero distance means a run */
-			var x = ip[ip_index-1]
-			for ip_index < ip_bound_index {
-				if ip[ref_index] != x {
+			var x = ip[ipIdx-1]
+			for ipIdx < ipBoundIdx {
+				if ip[refIdx] != x {
 					break
 				} else {
-					ip_index++
+					ipIdx++
 				}
-				ref_index++
+				refIdx++
 			}
 		} else {
-			for ip_index < ip_bound_index && ip[ref_index] == ip[ip_index] {
-				ref_index++
-				ip_index++
+			for ipIdx < ipBoundIdx && ip[refIdx] == ip[ipIdx] {
+				refIdx++
+				ipIdx++
 			}
-			if ip_index < ip_bound_index {
-				ip_index++
+			if ipIdx < ipBoundIdx {
+				ipIdx++
 			}
 		}
 
 		/* if we have copied something, adjust the copy count */
 		if cpy != 0 {
 			/* copy is biased, '0' means 1 byte copy */
-			op[op_index-cpy-1] = byte(cpy) - 1
+			op[opIdx-cpy-1] = byte(cpy) - 1
 		} else {
 			/* back, to overwrite the copy count */
-			op_index--
+			opIdx--
 		}
 
 		/* reset literal counter */
 		cpy = 0
 
 		/* length is biased, '1' means a match of 3 bytes */
-		ip_index -= 3
-		ln = ip_index - anchor_index
+		ipIdx -= 3
+		ln = ipIdx - anchorIdx
 
 		/* encode the match */
 		for ln > maxLen-2 {
-			op[op_index] = (7 << 5) + byte(distance>>8)
-			op_index++
-			op[op_index] = (maxLen - 2 - 7 - 2)
-			op_index++
-			op[op_index] = byte(distance)
-			op_index++
+			op[opIdx] = (7 << 5) + byte(distance>>8)
+			opIdx++
+			op[opIdx] = (maxLen - 2 - 7 - 2)
+			opIdx++
+			op[opIdx] = byte(distance)
+			opIdx++
 			ln -= maxLen - 2
 		}
 		if ln < 7 {
-			op[op_index] = byte(ln<<5) + byte(distance>>8)
-			op_index++
-			op[op_index] = byte(distance)
-			op_index++
+			op[opIdx] = byte(ln<<5) + byte(distance>>8)
+			opIdx++
+			op[opIdx] = byte(distance)
+			opIdx++
 		} else {
-			op[op_index] = (7 << 5) + byte(distance>>8)
-			op_index++
-			op[op_index] = byte(ln - 7)
-			op_index++
-			op[op_index] = byte(distance)
-			op_index++
+			op[opIdx] = (7 << 5) + byte(distance>>8)
+			opIdx++
+			op[opIdx] = byte(ln - 7)
+			opIdx++
+			op[opIdx] = byte(distance)
+			opIdx++
 		}
 
 		/* update the hash at match boundary */
-		hval = hash(ip, ip_index)
-		htab[hval] = ip_index
-		ip_index++
-		hval = hash(ip, ip_index)
-		htab[hval] = ip_index
-		ip_index++
+		hval = hash(ip, ipIdx)
+		htab[hval] = ipIdx
+		ipIdx++
+		hval = hash(ip, ipIdx)
+		htab[hval] = ipIdx
+		ipIdx++
 
 		/* assuming literal copy */
-		op[op_index] = maxCopy - 1
-		op_index++
+		op[opIdx] = maxCopy - 1
+		opIdx++
 	}
 
 	/* left-over as literal copy */
-	ip_bound_index++
-	for ip_index <= ip_bound_index {
-		op[op_index] = ip[ip_index]
-		op_index++
-		ip_index++
+	ipBoundIdx++
+	for ipIdx <= ipBoundIdx {
+		op[opIdx] = ip[ipIdx]
+		opIdx++
+		ipIdx++
 		cpy++
 		if cpy == maxCopy {
 			cpy = 0
-			op[op_index] = maxCopy - 1
-			op_index++
+			op[opIdx] = maxCopy - 1
+			opIdx++
 		}
 	}
 
 	/* if we have copied something, adjust the copy length */
 	if cpy != 0 {
-		op[op_index-cpy-1] = byte(cpy) - 1
+		op[opIdx-cpy-1] = byte(cpy) - 1
 	} else {
-		op_index--
+		opIdx--
 	}
 
-	return op[:op_index]
+	return op[:opIdx]
 }
 
+// Decompress decompresses input and returns the original data
 func Decompress(input []byte, maxout int) ([]byte, error) {
 
 	length := len(input)
 	ip := input
-	var ip_index uint32
+	var ipIdx uint32
 
-	ip_limit_index := uint32(length)
+	ipLimitIdx := uint32(length)
 	op := make([]byte, maxout)
-	var op_index uint32
-	op_limit_index := uint32(maxout)
+	var opIdx uint32
+	opLimitIdx := uint32(maxout)
 
-	var ctrl = ip[ip_index] & 31
-	ip_index++
+	var ctrl = ip[ipIdx] & 31
+	ipIdx++
 	var loop = true
 
 	for loop {
-		var ref_index = op_index
-		var ln uint32 = uint32(ctrl >> 5)
-		var ofs uint32 = uint32(ctrl&31) << 8
+		var refIdx = opIdx
+		var ln = uint32(ctrl >> 5)
+		var ofs = uint32(ctrl&31) << 8
 
 		if ctrl >= 32 {
 			ln--
-			ref_index -= ofs
+			refIdx -= ofs
 			if ln == 7-1 {
-				ln += uint32(ip[ip_index])
-				ip_index++
+				ln += uint32(ip[ipIdx])
+				ipIdx++
 			}
-			ref_index -= uint32(ip[ip_index])
-			ip_index++
+			refIdx -= uint32(ip[ipIdx])
+			ipIdx++
 
-			if op_index+ln+3 > op_limit_index {
+			if opIdx+ln+3 > opLimitIdx {
 				return nil, ErrCorrupt
 			}
 
-			if ref_index > op_limit_index {
-				// really want to check if  ref_index is <0, but unsigned makes it tricky
+			if refIdx > opLimitIdx {
+				// really want to check if  refIdx is <0, but unsigned makes it tricky
 				return nil, ErrCorrupt
 			}
 
-			if ip_index < ip_limit_index {
-				ctrl = byte(ip[ip_index])
-				ip_index++
+			if ipIdx < ipLimitIdx {
+				ctrl = byte(ip[ipIdx])
+				ipIdx++
 			} else {
 				loop = false
 			}
 
-			if ref_index == op_index {
+			if refIdx == opIdx {
 				/* optimize copy for a run */
-				var b uint8 = op[ref_index-1]
-				op[op_index] = b
-				op_index++
-				op[op_index] = b
-				op_index++
-				op[op_index] = b
-				op_index++
+				var b = op[refIdx-1]
+				op[opIdx] = b
+				opIdx++
+				op[opIdx] = b
+				opIdx++
+				op[opIdx] = b
+				opIdx++
 				for ; ln != 0; ln-- {
-					op[op_index] = b
-					op_index++
+					op[opIdx] = b
+					opIdx++
 				}
 			} else {
 				/* copy from reference */
-				ref_index--
+				refIdx--
 
-				op[op_index] = op[ref_index]
-				op_index++
-				ref_index++
+				op[opIdx] = op[refIdx]
+				opIdx++
+				refIdx++
 
-				op[op_index] = op[ref_index]
-				op_index++
-				ref_index++
+				op[opIdx] = op[refIdx]
+				opIdx++
+				refIdx++
 
-				op[op_index] = op[ref_index]
-				op_index++
-				ref_index++
+				op[opIdx] = op[refIdx]
+				opIdx++
+				refIdx++
 
 				for ; ln != 0; ln-- {
-					op[op_index] = op[ref_index]
-					op_index++
-					ref_index++
+					op[opIdx] = op[refIdx]
+					opIdx++
+					refIdx++
 				}
 			}
 		} else {
 			ctrl++
 
-			if op_index+uint32(ctrl) > op_limit_index {
+			if opIdx+uint32(ctrl) > opLimitIdx {
 				return nil, ErrCorrupt
 			}
 
-			if ip_index+uint32(ctrl) > ip_limit_index {
+			if ipIdx+uint32(ctrl) > ipLimitIdx {
 				return nil, ErrCorrupt
 			}
 
-			op[op_index] = ip[ip_index]
-			op_index++
-			ip_index++
+			op[opIdx] = ip[ipIdx]
+			opIdx++
+			ipIdx++
 
 			for ctrl--; ctrl > 0; ctrl-- {
-				op[op_index] = ip[ip_index]
-				op_index++
-				ip_index++
+				op[opIdx] = ip[ipIdx]
+				opIdx++
+				ipIdx++
 			}
 
-			loop = ip_index < ip_limit_index
+			loop = ipIdx < ipLimitIdx
 			if loop {
-				ctrl = ip[ip_index]
-				ip_index++
+				ctrl = ip[ipIdx]
+				ipIdx++
 			}
 		}
 	}
 
-	return op[:op_index], nil
+	return op[:opIdx], nil
 }
 
 func readu16(p []byte, i uint32) uint16 {
