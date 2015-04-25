@@ -15,7 +15,10 @@ FastLZ home page: http://fastlz.org/
 */
 package fastlz
 
-import "errors"
+import (
+	"encoding/binary"
+	"errors"
+)
 
 // TODO(dgryski): make compression API match snappy and friends
 // TODO(dgryski): add level 2?
@@ -32,10 +35,22 @@ const (
 )
 
 // ErrCorrupt indicates a corrupt input stream
-var ErrCorrupt = errors.New("corrupt input")
+var ErrCorrupt = errors.New("fastlz: corrupt input")
+var ErrInputTooSmall = errors.New("fastlz: input too small")
 
-// Compress compresses the input and returns the compressed byte stream
-func Compress(input []byte) []byte {
+// MaxEncodedLen returns the maximum length of a fastlz block, given its
+// uncompressed length.
+func MaxEncodedLen(srcLen int) int {
+	// C comments say 5%, but the cgo version has 40% and the C code has 100% :/
+	ln := float64(srcLen) * 1.4
+	if ln < 66 {
+		ln = 66
+	}
+	return int(ln)
+}
+
+// Encode compresses the input and returns the compressed byte stream.  The minimum input buffer size is 16.
+func Encode(output, input []byte) ([]byte, error) {
 
 	ip := input
 
@@ -44,8 +59,19 @@ func Compress(input []byte) []byte {
 
 	var ipBoundIdx = length - 2
 	var ipLimitIdx = length - 12
-	var op = make([]byte, int(float64(len(ip)+50)*1.4))
-	var opIdx uint32
+
+	if len(input) < 16 {
+		return nil, ErrInputTooSmall
+	}
+
+	if n := MaxEncodedLen(len(input)); len(output) < n {
+		output = make([]byte, n)
+	}
+
+	binary.LittleEndian.PutUint32(output, uint32(len(input)))
+
+	var op = output
+	var opIdx uint32 = 4
 
 	var htab []uint32
 	var hslotIdx uint32
@@ -56,7 +82,7 @@ func Compress(input []byte) []byte {
 	/* sanity check */
 	if length < 4 {
 		if length == 0 {
-			return nil
+			return nil, nil
 		}
 
 		/* create literal copy only */
@@ -68,7 +94,7 @@ func Compress(input []byte) []byte {
 			opIdx++
 			ipIdx++
 		}
-		return op[:length+1]
+		return op[:length+1], nil
 	}
 
 	/* initializes hash table */
@@ -228,20 +254,34 @@ func Compress(input []byte) []byte {
 		opIdx--
 	}
 
-	return op[:opIdx]
+	return op[:opIdx], nil
 }
 
-// Decompress decompresses input and returns the original data
-func Decompress(input []byte, maxout int) ([]byte, error) {
+// Decode decompresses input and returns the original data
+func Decode(output, input []byte) ([]byte, error) {
+
+	if len(input) < 4 {
+		return nil, ErrCorrupt
+	}
+
+	uncompressedLen := binary.LittleEndian.Uint32(input)
+
+	if uncompressedLen == 0 {
+		return nil, nil
+	}
+
+	if output == nil || len(output) < int(uncompressedLen) {
+		output = make([]byte, uncompressedLen)
+	}
 
 	length := len(input)
 	ip := input
-	var ipIdx uint32
+	var ipIdx uint32 = 4
 
 	ipLimitIdx := uint32(length)
-	op := make([]byte, maxout)
+	op := output
 	var opIdx uint32
-	opLimitIdx := uint32(maxout)
+	opLimitIdx := uncompressedLen
 
 	var ctrl = ip[ipIdx] & 31
 	ipIdx++
