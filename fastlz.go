@@ -299,6 +299,10 @@ func Decode(output, input []byte) ([]byte, error) {
 				ln += uint32(ip[ipIdx])
 				ipIdx++
 			}
+
+			if ipIdx >= ipLimitIdx {
+				return nil, ErrCorrupt
+			}
 			refIdx -= uint32(ip[ipIdx])
 			ipIdx++
 
